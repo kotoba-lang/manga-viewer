@@ -1,0 +1,13 @@
+{;; Portable .cljc manga viewer — normalized work model + RTL pagination logic
+ ;; + css string + pure-hiccup views (works-grid / reader). Zero runtime deps;
+ ;; state and event handlers are injected by the consumer (reagent SPA, SSR
+ ;; hiccup→HTML, …) — same view-layer contract as kotoba-lang/liquid-glass-ui.
+ ;; ADR-2607070500.
+ :paths ["src"]
+ :deps {}
+ :aliases
+ {:test {:extra-paths ["test"]
+         :extra-deps {io.github.cognitect-labs/test-runner
+                      {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+         :main-opts ["-m" "cognitect.test-runner"]
+         :exec-fn cognitect.test-runner.api/test}}}
