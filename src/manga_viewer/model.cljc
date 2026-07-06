@@ -21,8 +21,12 @@
   manga-viewer.pagination/supported-modes."
   (:require [clojure.string :as str]))
 
-(defn page-count [work]
-  (count (:manga/pages work)))
+(defn page-count
+  "Page count — :manga/page-count wins when set (index-only works that carry
+  no :manga/pages, e.g. registry entries pointing at an external reader)."
+  [work]
+  (or (:manga/page-count work)
+      (count (:manga/pages work))))
 
 (defn image-count [work]
   (reduce + 0 (map #(count (:page/images %)) (:manga/pages work))))

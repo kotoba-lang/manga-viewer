@@ -55,6 +55,11 @@
     (is (= "/images/p0-1.webp" (:manga/cover work)))
     (is (empty? (m/validate work)))))
 
+(deftest page-count-override-for-index-only-works
+  (is (= 45 (m/page-count {:manga/id "x" :manga/title "X" :manga/page-count 45})))
+  (is (= 2 (m/page-count {:manga/pages [{:page/number 1 :page/images ["a"]}
+                                        {:page/number 2 :page/images ["b"]}]}))))
+
 (deftest validate-reports-problems
   (is (= ["missing :manga/id" "missing :manga/title" "no pages"]
          (m/validate {})))
