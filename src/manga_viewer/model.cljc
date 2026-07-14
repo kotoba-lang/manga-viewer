@@ -114,13 +114,19 @@
          ;; source's export step). Works with no geometry (the common case
          ;; today) get an empty :page/panels and render via :page/images as
          ;; before -- this is purely additive.
+         ;; :panel/dialogue/:panel/sfx/:panel/tone carry through independent of
+         ;; :gh.manga/rect -- a panel can have dialogue without geometry (an
+         ;; ordinary panel-per-image page) or geometry without dialogue.
          page-panels (fn [page]
                        (->> (page-panel-entities page)
                             (filter :gh.manga/rect)
                             (mapv (fn [p]
                                     (cond-> {:panel/rect (:gh.manga/rect p)
                                              :panel/imageUrl (some-> (:gh.manga/imageUrl p) image-fn)}
-                                      (:gh.manga/tilt p) (assoc :panel/tilt (:gh.manga/tilt p)))))))
+                                      (:gh.manga/tilt p) (assoc :panel/tilt (:gh.manga/tilt p))
+                                      (seq (:gh.manga/dialogue p)) (assoc :panel/dialogue (:gh.manga/dialogue p))
+                                      (seq (:gh.manga/sfx p)) (assoc :panel/sfx (:gh.manga/sfx p))
+                                      (:gh.manga/tone p) (assoc :panel/tone (:gh.manga/tone p)))))))
          first-image (some seq (map page-images pages))]
      (when work
        {:manga/id (:gh.manga/id work)

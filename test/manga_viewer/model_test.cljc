@@ -83,6 +83,18 @@
       (is (empty? (:page/panels p1)))
       (is (= 2 (count (:page/images p1)))))))
 
+(deftest from-gh-manga-tx-carries-dialogue-sfx-tone-when-present
+  (let [tx (conj gh-tx
+                 {:gh.manga/panel-id "d" :gh.manga/page "gh.manga/page/demo/p000"
+                  :gh.manga/panelNumber 2 :gh.manga/rect [0.5 0.0 0.5 1.0]
+                  :gh.manga/dialogue [{:speaker "Ren" :text "こんにちは"}]
+                  :gh.manga/sfx ["ガチャ"] :gh.manga/tone :focus-lines})
+        work (m/from-gh-manga-tx tx)
+        p0 (first (:manga/pages work))]
+    (is (= [{:speaker "Ren" :text "こんにちは"}] (:panel/dialogue (first (:page/panels p0)))))
+    (is (= ["ガチャ"] (:panel/sfx (first (:page/panels p0)))))
+    (is (= :focus-lines (:panel/tone (first (:page/panels p0)))))))
+
 (deftest validate-reports-problems
   (is (= ["missing :manga/id" "missing :manga/title" "no pages"]
          (m/validate {})))
