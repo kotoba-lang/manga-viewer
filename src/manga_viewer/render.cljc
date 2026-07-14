@@ -52,6 +52,44 @@
          :loading loading
          :decoding "async"}])
 
+;; ── komawari-composed page (ADR-2607141700) ──────────────────────────────────
+;; When a page's panels carry :panel/rect (kami.mangaka.komawari's
+;; propose-page-layout output, via manga-viewer.model/from-gh-manga-tx),
+;; render them absolutely-positioned within one page frame instead of a flat
+;; list of full-width panel images — the frames/gutters/force-line-tilt
+;; geometry a "panel-per-image" work would otherwise lose entirely. A page
+;; with no :panel/rect-bearing panels never reaches this fn (see stage/
+;; scroll-stage below), so every existing panel-per-image work (the common
+;; case today) is byte-identical to before.
+
+(defn- panel-style
+  "[x y w h] (normalized 0-1) + optional tilt (degrees) → CSS. tilt renders as
+  a `skewX` shear on the panel's own box — an approximation of komawari's true
+  parallelogram shear (Path2D in the JVM/Java2D renderer, ADR-2607051520), not
+  a pixel-exact match, but the same visual language (force-line diagonal
+  border) in a context (CSS box layout) that has no native parallelogram-clip
+  primitive cheap enough for a browser reader."
+  [[x y w h] tilt]
+  (cond-> {:position "absolute"
+           :left (str (* 100 x) "%") :top (str (* 100 y) "%")
+           :width (str (* 100 w) "%") :height (str (* 100 h) "%")}
+    tilt (assoc :transform (str "skewX(" (- tilt) "deg)"))))
+
+(defn- composed-panel [panel]
+  [:div.manga-viewer__panel {:style (panel-style (:panel/rect panel) (:panel/tilt panel))}
+   (when-let [src (:panel/imageUrl panel)]
+     [:img {:src src :alt "" :loading "lazy" :decoding "async"}])])
+
+(defn composed-page
+  "A geometry-bearing page → one framed page div with each panel
+  absolutely-positioned per its :panel/rect (see `panel-style`)."
+  [page]
+  [:div.manga-viewer__composed-page
+   (into [:div.manga-viewer__composed-frame]
+         (map composed-panel (:page/panels page)))])
+
+(defn- geometry? [page] (seq (:page/panels page)))
+
 (defn- stage
   "Current unit on the stage. RTL: pages inside a unit render right→left
   (higher page number on the LEFT), and the LEFT tap zone advances."
@@ -61,10 +99,12 @@
         multi? (boolean (some #(> (count (:page/images (nth pgs %))) 1) current))]
     [:div.manga-viewer__stage
      (into [:div.manga-viewer__unit {:class (when multi? "is-multi")}]
-           (for [pi (reverse current)
-                 :let [page (nth pgs pi)]
-                 img (:page/images page)]
-             (page-img page img "eager")))
+           (mapcat (fn [pi]
+                     (let [page (nth pgs pi)]
+                       (if (geometry? page)
+                         [(composed-page page)]
+                         (map #(page-img page % "eager") (:page/images page)))))
+                   (reverse current)))
      [:div.manga-viewer__zone.manga-viewer__zone--left {:on-click on-next}]
      [:div.manga-viewer__zone.manga-viewer__zone--right {:on-click on-prev}]
      [:div.manga-viewer__count
@@ -73,8 +113,9 @@
 (defn- scroll-stage [work]
   (into [:div.manga-viewer__scroll]
         (mapcat (fn [page]
-                  (concat (map (fn [img] (page-img page img "lazy"))
-                               (:page/images page))
+                  (concat (if (geometry? page)
+                            [(composed-page page)]
+                            (map (fn [img] (page-img page img "lazy")) (:page/images page)))
                           (when (:page/text page)
                             [[:p.manga-viewer__page-text (:page/text page)]])))
                 (:manga/pages work))))

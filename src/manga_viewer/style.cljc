@@ -51,5 +51,17 @@
 .manga-viewer__scroll img{width:100%;max-width:820px;height:auto;border-radius:4px;background:#000}
 .manga-viewer__page-text{color:var(--manga-viewer-muted);font-size:13px;line-height:1.7;max-width:820px;white-space:pre-wrap;margin:0}")
 
+;; ADR-2607141700: komawari-composed pages (kami.mangaka.komawari-bearing
+;; :panel/rect data) render panels absolutely-positioned within one B5-ratio
+;; frame instead of a flat list of full-width images.
+(def ^:private composed
+  ".manga-viewer__composed-page{width:100%;max-width:820px;margin:0 auto}
+.manga-viewer__composed-frame{position:relative;width:100%;aspect-ratio:1075/1518;background:#161412;box-shadow:0 4px 24px rgba(0,0,0,.6)}
+.manga-viewer__panel{overflow:hidden;border:3px solid #000;background:#e9e3cf;box-sizing:border-box}
+.manga-viewer__panel img{width:100%;height:100%;object-fit:cover;display:block}
+.manga-viewer__unit .manga-viewer__composed-page{height:100%;max-height:100%;display:flex;align-items:center}
+.manga-viewer__unit .manga-viewer__composed-frame{max-height:100%}
+.manga-viewer__unit.is-multi .manga-viewer__composed-page{max-width:820px}")
+
 (defn css []
-  (str root "\n" grid "\n" reader "\n"))
+  (str root "\n" grid "\n" reader "\n" composed "\n"))

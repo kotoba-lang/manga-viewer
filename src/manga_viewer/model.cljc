@@ -100,11 +100,27 @@
                                       (when-let [uri (:yoro.post/uri e)]
                                         [uri (:yoro.post/text e)]))
                                     tx))
+         page-panel-entities (fn [page]
+                                (->> (get panels-by-page (:db/id page))
+                                     (sort-by #(or (:gh.manga/panelNumber %) 0))))
          page-images (fn [page]
-                       (->> (get panels-by-page (:db/id page))
-                            (sort-by #(or (:gh.manga/panelNumber %) 0))
+                       (->> (page-panel-entities page)
                             (keep :gh.manga/imageUrl)
                             (mapv image-fn)))
+         ;; ADR-2607141700: a panel-geometry-aware view of the same panels,
+         ;; alongside (not replacing) :page/images -- populated only when at
+         ;; least one panel on the page carries :gh.manga/rect (komawari
+         ;; output, e.g. kami.mangaka.komawari/propose-page-layout via a
+         ;; source's export step). Works with no geometry (the common case
+         ;; today) get an empty :page/panels and render via :page/images as
+         ;; before -- this is purely additive.
+         page-panels (fn [page]
+                       (->> (page-panel-entities page)
+                            (filter :gh.manga/rect)
+                            (mapv (fn [p]
+                                    (cond-> {:panel/rect (:gh.manga/rect p)
+                                             :panel/imageUrl (some-> (:gh.manga/imageUrl p) image-fn)}
+                                      (:gh.manga/tilt p) (assoc :panel/tilt (:gh.manga/tilt p)))))))
          first-image (some seq (map page-images pages))]
      (when work
        {:manga/id (:gh.manga/id work)
@@ -116,7 +132,8 @@
         :manga/url url
         :manga/pages (mapv (fn [page]
                              (cond-> {:page/number (or (:gh.manga/pageNumber page) 0)
-                                      :page/images (page-images page)}
+                                      :page/images (page-images page)
+                                      :page/panels (page-panels page)}
                                (:gh.manga/title page)
                                (assoc :page/title (:gh.manga/title page))
 

@@ -60,6 +60,29 @@
   (is (= 2 (m/page-count {:manga/pages [{:page/number 1 :page/images ["a"]}
                                         {:page/number 2 :page/images ["b"]}]}))))
 
+(deftest from-gh-manga-tx-carries-panel-geometry-when-present
+  (let [tx (conj gh-tx
+                 {:gh.manga/panel-id "d" :gh.manga/page "gh.manga/page/demo/p000"
+                  :gh.manga/panelNumber 2 :gh.manga/imageUrl "/images/p0-2.png"
+                  :gh.manga/rect [0.5 0.0 0.5 1.0] :gh.manga/tilt 12.0})
+        work (m/from-gh-manga-tx tx)
+        p0 (first (:manga/pages work))]
+    (testing "only the panel that actually carries :gh.manga/rect appears in :page/panels"
+      (is (= 1 (count (:page/panels p0))) "page has 2 panels total, only 1 has :rect")
+      (is (= [0.5 0.0 0.5 1.0] (:panel/rect (first (:page/panels p0)))))
+      (is (= 12.0 (:panel/tilt (first (:page/panels p0))))))
+    (testing "image-fn applies to :panel/imageUrl the same as :page/images"
+      (let [work2 (m/from-gh-manga-tx tx {:image-fn #(str % "?w=800")})
+            p0-2 (first (:manga/pages work2))]
+        (is (= "/images/p0-2.png?w=800" (:panel/imageUrl (first (:page/panels p0-2)))))))
+    (testing ":page/images is unaffected by geometry -- both panels still list their image"
+      (is (= 2 (count (:page/images p0))))))
+  (testing "a page with no geometry-bearing panels gets an empty :page/panels, :page/images unaffected"
+    (let [work (m/from-gh-manga-tx gh-tx)
+          p1 (second (:manga/pages work))]
+      (is (empty? (:page/panels p1)))
+      (is (= 2 (count (:page/images p1)))))))
+
 (deftest validate-reports-problems
   (is (= ["missing :manga/id" "missing :manga/title" "no pages"]
          (m/validate {})))

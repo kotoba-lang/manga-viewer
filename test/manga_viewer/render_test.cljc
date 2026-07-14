@@ -61,3 +61,39 @@
     (is (not (contains-str? view "見開き"))
         "panel-per-image works only offer 単頁/縦読")
     (is (= ["c1" "c2"] (imgs view)) "all panel images of the current page stack")))
+
+;; ── komawari-composed pages (ADR-2607141700) ─────────────────────────────────
+
+(def geometry-work
+  {:manga/id "gh" :manga/title "Ghost Hacker"
+   :manga/pages [{:page/number 0
+                  :page/images ["c1" "c2"]
+                  :page/panels [{:panel/rect [0.0 0.0 0.6 1.0] :panel/imageUrl "c1"}
+                                {:panel/rect [0.6 0.0 0.4 1.0] :panel/imageUrl "c2" :panel/tilt 8.0}]}
+                 {:page/number 1 :page/images ["d1"]}]})
+
+(defn- styles-of [form]
+  (->> (flatten-hiccup form)
+       (filter #(and (vector? %) (= :div.manga-viewer__panel (first %))))
+       (map #(:style (second %)))))
+
+(deftest composed-page-positions-panels-by-rect
+  (let [view (r/composed-page (first (:manga/pages geometry-work)))
+        styles (styles-of view)]
+    (is (= 2 (count styles)))
+    (is (= "0.0%" (:left (first styles))))
+    (is (= "60.0%" (:width (first styles))))
+    (is (nil? (:transform (first styles))) "no tilt on the first panel")
+    (is (= "60.0%" (:left (second styles))))
+    (is (= "skewX(-8.0deg)" (:transform (second styles))) "tilt renders as a CSS skew")
+    (is (= ["c1" "c2"] (imgs view)))))
+
+(deftest reader-uses-composed-page-only-for-geometry-bearing-pages
+  (testing "scroll: page 0 (has :page/panels) composes, page 1 (no geometry) stays flat"
+    (let [view (r/reader geometry-work {:mode :scroll} {})]
+      (is (contains-str? view :div.manga-viewer__composed-page))
+      (is (= ["c1" "c2" "d1"] (imgs view))
+          "composed page still surfaces both its panel images via the same img extraction")))
+  (testing "a work with zero geometry pages never touches composed-page (byte-identical to before)"
+    (let [view (r/reader panel-work {:mode :scroll} {})]
+      (is (not (contains-str? view :div.manga-viewer__composed-page))))))
