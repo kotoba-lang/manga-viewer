@@ -75,14 +75,67 @@
            :width (str (* 100 w) "%") :height (str (* 100 h) "%")}
     tilt (assoc :transform (str "skewX(" (- tilt) "deg)"))))
 
+;; ── tone (背景トーン) ─────────────────────────────────────────────────────────
+;; A CSS-pattern approximation of kami.mangaka.page's tone-bg! (Java2D
+;; screentone/focus-lines/vignette/etc drawn onto the panel). Layered between
+;; the image and the frame border, same z-order as the Java2D version (panel
+;; art → tones → SFX → bubbles, per kami.mangaka.komawari's own docstring).
+;; :crowd-silhouette has no cheap CSS equivalent (the JVM version draws
+;; discrete head/shoulder shapes) and is intentionally left unimplemented --
+;; falls through to the default (no overlay), same as :none/:flat-white.
+
+(def ^:private tone-background
+  {:focus-lines "repeating-conic-gradient(rgba(0,0,0,.55) 0deg 2deg, transparent 2deg 8deg)"
+   :radial-burst "repeating-conic-gradient(rgba(0,0,0,.55) 0deg 2deg, transparent 2deg 8deg)"
+   :flash "repeating-conic-gradient(rgba(0,0,0,.8) 0deg 3deg, transparent 3deg 6deg)"
+   :vignette-dark "radial-gradient(circle, transparent 45%, rgba(0,0,0,.75) 100%)"
+   :gradient "linear-gradient(to bottom, transparent, rgba(0,0,0,.5))"
+   :dot "radial-gradient(rgba(0,0,0,.35) 30%, transparent 31%)"
+   :hatching "repeating-linear-gradient(45deg, rgba(0,0,0,.3) 0 1px, transparent 1px 8px)"})
+
+(defn- tone-overlay [tone]
+  (when-let [bg (get tone-background tone)]
+    [:div.manga-viewer__tone
+     {:style (cond-> {:background-image bg}
+               (#{:dot} tone) (assoc :background-size "11px 11px"))}]))
+
+;; ── SFX (擬音) ────────────────────────────────────────────────────────────────
+;; kami.mangaka.page's draw-sfx: bold white text with a black stroke, tilted,
+;; upper area of the panel. CSS `-webkit-text-stroke` is the direct browser
+;; equivalent of the Java2D 8-direction offset-draw stroke trick.
+
+(defn- sfx-text [text]
+  [:div.manga-viewer__sfx text])
+
+;; ── speech bubbles ───────────────────────────────────────────────────────────
+;; kami.mangaka.page's bubble: white rounded box + black outline + a tail
+;; triangle, alternating :l/:r side per line for reading rhythm, stacked
+;; top-to-bottom. The tail is a classic CSS border-triangle on ::after
+;; (see style.cljc) rather than an actual polygon -- close enough at reader
+;; scale, no canvas/SVG dependency needed.
+
+(defn- dialogue-bubble [idx {:keys [speaker text]}]
+  (let [side (if (even? idx) "l" "r")]
+    [:div.manga-viewer__bubble-row {:class (str "manga-viewer__bubble-row--" side)}
+     [:div.manga-viewer__bubble
+      (when speaker [:div.manga-viewer__bubble-speaker speaker])
+      [:div.manga-viewer__bubble-text text]]]))
+
 (defn- composed-panel [panel]
   [:div.manga-viewer__panel {:style (panel-style (:panel/rect panel) (:panel/tilt panel))}
    (when-let [src (:panel/imageUrl panel)]
-     [:img {:src src :alt "" :loading "lazy" :decoding "async"}])])
+     [:img {:src src :alt "" :loading "lazy" :decoding "async"}])
+   (tone-overlay (:panel/tone panel))
+   (when (seq (:panel/sfx panel))
+     (into [:div.manga-viewer__sfx-layer] (map sfx-text (:panel/sfx panel))))
+   (when (seq (:panel/dialogue panel))
+     (into [:div.manga-viewer__bubble-layer]
+           (map-indexed dialogue-bubble (:panel/dialogue panel))))])
 
 (defn composed-page
   "A geometry-bearing page → one framed page div with each panel
-  absolutely-positioned per its :panel/rect (see `panel-style`)."
+  absolutely-positioned per its :panel/rect (see `panel-style`), each
+  overlaid with its own tone/SFX/dialogue-bubble layers when present."
   [page]
   [:div.manga-viewer__composed-page
    (into [:div.manga-viewer__composed-frame]

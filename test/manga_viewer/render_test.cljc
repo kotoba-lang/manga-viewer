@@ -97,3 +97,43 @@
   (testing "a work with zero geometry pages never touches composed-page (byte-identical to before)"
     (let [view (r/reader panel-work {:mode :scroll} {})]
       (is (not (contains-str? view :div.manga-viewer__composed-page))))))
+
+;; ── bubble/SFX/tone overlays ──────────────────────────────────────────────────
+
+(def rich-page
+  {:page/number 0
+   :page/panels [{:panel/rect [0.0 0.0 1.0 1.0] :panel/imageUrl "c1"
+                  :panel/dialogue [{:speaker "Ren" :text "こんにちは"} {:text "（無言）"}]
+                  :panel/sfx ["ガチャ"] :panel/tone :focus-lines}]})
+
+(defn- classes-of [tag form]
+  (->> (flatten-hiccup form)
+       (filter #(and (vector? %) (= tag (first %))))))
+
+(deftest composed-panel-renders-tone-overlay-only-when-tone-present
+  (is (= 1 (count (classes-of :div.manga-viewer__tone (r/composed-page rich-page)))))
+  (is (empty? (classes-of :div.manga-viewer__tone
+                          (r/composed-page (first (:manga/pages geometry-work)))))
+      "no :panel/tone -> no tone div at all, not an empty one"))
+
+(deftest composed-panel-renders-sfx-text
+  (let [view (r/composed-page rich-page)]
+    (is (contains-str? view "ガチャ"))
+    (is (= 1 (count (classes-of :div.manga-viewer__sfx-layer view))))))
+
+(deftest composed-panel-renders-dialogue-as-alternating-bubbles
+  (let [view (r/composed-page rich-page)
+        rows (classes-of :div.manga-viewer__bubble-row view)]
+    (is (= 2 (count rows)) "one bubble-row per dialogue line")
+    (is (contains-str? view "こんにちは"))
+    (is (contains-str? view "Ren") "speaker renders when present")
+    (is (contains-str? view "（無言）"))
+    (testing "sides alternate l/r by dialogue index"
+      (is (= "manga-viewer__bubble-row--l" (:class (second (first rows)))))
+      (is (= "manga-viewer__bubble-row--r" (:class (second (second rows))))))))
+
+(deftest composed-panel-has-no-overlay-layers-when-panel-has-none
+  (let [view (r/composed-page (first (:manga/pages geometry-work)))]
+    (is (empty? (classes-of :div.manga-viewer__sfx-layer view)))
+    (is (empty? (classes-of :div.manga-viewer__bubble-layer view)))
+    (is (empty? (classes-of :div.manga-viewer__tone view)))))
