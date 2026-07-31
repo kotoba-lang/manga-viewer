@@ -105,3 +105,36 @@
             (m/validate {:manga/id "x" :manga/title "X"
                          :manga/pages [{:page/number 1 :page/images ["a"]}
                                        {:page/number 1 :page/images ["b"]}]}))))
+
+(def variant-tx
+  [{:db/id "w" :gh.manga/id "demo" :gh.manga/title "Demo"}
+   {:db/id "p0" :gh.manga/work "w" :gh.manga/pageNumber 0}
+   {:db/id "a" :gh.manga/panel-id "a" :gh.manga/page "p0" :gh.manga/panelNumber 1
+    :gh.manga/rect [0 0 1 0.5] :gh.manga/imageUrl "/images/a.png"
+    :gh.manga/imageVariants {"sketch" "/images/a_sketch.png"
+                             "sdxl" "/images/a_sdxl.png"}}
+   ;; produced exactly once — the sketch run never covered this panel
+   {:db/id "b" :gh.manga/panel-id "b" :gh.manga/page "p0" :gh.manga/panelNumber 2
+    :gh.manga/rect [0 0.5 1 0.5] :gh.manga/imageUrl "/images/b.png"}])
+
+(deftest production-variants-are-selectable
+  (let [work (m/from-gh-manga-tx variant-tx {:image-fn #(str/replace % ".png" ".webp")})]
+    (testing "every workflow the work was produced with, canonical excluded"
+      (is (= ["sdxl" "sketch"] (:manga/variants work))))
+    (testing "variant urls go through image-fn like the canonical one"
+      (is (= {"sketch" "/images/a_sketch.webp" "sdxl" "/images/a_sdxl.webp"}
+             (:panel/imageVariants (first (:page/panels (first (:manga/pages work))))))))
+    (let [sketch (m/select-variant work "sketch")
+          page (first (:manga/pages sketch))]
+      (testing "panels that run produced switch to it"
+        (is (= "/images/a_sketch.webp" (:panel/imageUrl (first (:page/panels page)))))
+        (is (= "/images/a_sketch.webp" (first (:page/images page)))))
+      (testing "panels it never produced keep canonical art, so no holes"
+        (is (= "/images/b.webp" (:panel/imageUrl (second (:page/panels page)))))
+        (is (= "/images/b.webp" (second (:page/images page)))))
+      (testing "page count is variant-independent — reading position survives"
+        (is (= (count (:manga/pages work)) (count (:manga/pages sketch))))))
+    (testing "nil / unknown variant leaves the work alone"
+      (is (= work (m/select-variant work nil)))
+      (is (= (:page/images (first (:manga/pages work)))
+             (:page/images (first (:manga/pages (m/select-variant work "nope")))))))))
