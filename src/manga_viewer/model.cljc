@@ -107,6 +107,12 @@
                        (->> (page-panel-entities page)
                             (keep :gh.manga/imageUrl)
                             (mapv image-fn)))
+         ;; parallel to page-images: the variant map of each imaged panel, so
+         ;; select-variant can swap images on geometry-free pages too.
+         page-image-variants (fn [page]
+                               (->> (page-panel-entities page)
+                                    (filter :gh.manga/imageUrl)
+                                    (mapv #(or (:gh.manga/imageVariants %) {}))))
          ;; ADR-2607141700: a panel-geometry-aware view of the same panels,
          ;; alongside (not replacing) :page/images -- populated only when at
          ;; least one panel on the page carries :gh.manga/rect (komawari
@@ -117,6 +123,15 @@
          ;; :panel/dialogue/:panel/sfx/:panel/tone carry through independent of
          ;; :gh.manga/rect -- a panel can have dialogue without geometry (an
          ;; ordinary panel-per-image page) or geometry without dialogue.
+         ;; :gh.manga/imageVariants is {workflow -> url}: the same panel as
+         ;; produced by another workflow/LLM run, not a revision of the
+         ;; canonical one. Carried through image-fn like :panel/imageUrl so a
+         ;; reader can offer "read this episode as <workflow>" without knowing
+         ;; anything about how the images were made.
+         variants-of (fn [p]
+                       (when (seq (:gh.manga/imageVariants p))
+                         (reduce-kv (fn [m wf url] (assoc m wf (image-fn url)))
+                                    {} (:gh.manga/imageVariants p))))
          page-panels (fn [page]
                        (->> (page-panel-entities page)
                             (filter :gh.manga/rect)
@@ -124,9 +139,13 @@
                                     (cond-> {:panel/rect (:gh.manga/rect p)
                                              :panel/imageUrl (some-> (:gh.manga/imageUrl p) image-fn)}
                                       (:gh.manga/tilt p) (assoc :panel/tilt (:gh.manga/tilt p))
+                                      (seq (variants-of p)) (assoc :panel/imageVariants (variants-of p))
                                       (seq (:gh.manga/dialogue p)) (assoc :panel/dialogue (:gh.manga/dialogue p))
                                       (seq (:gh.manga/sfx p)) (assoc :panel/sfx (:gh.manga/sfx p))
                                       (:gh.manga/tone p) (assoc :panel/tone (:gh.manga/tone p)))))))
+         all-variants (->> (filter :gh.manga/panel-id tx)
+                           (mapcat (comp keys :gh.manga/imageVariants))
+                           distinct sort vec)
          first-image (some seq (map page-images pages))]
      (when work
        {:manga/id (:gh.manga/id work)
@@ -136,9 +155,14 @@
         :manga/tags (vec (or tags []))
         :manga/cover (or cover (first first-image))
         :manga/url url
+        ;; every workflow this work has ever been produced with, canonical
+        ;; excluded — empty for a work made exactly once.
+        :manga/variants all-variants
         :manga/pages (mapv (fn [page]
                              (cond-> {:page/number (or (:gh.manga/pageNumber page) 0)
                                       :page/images (page-images page)
+                                      :page/image-variants (mapv #(reduce-kv (fn [m wf u] (assoc m wf (image-fn u))) {} %)
+                                                                 (page-image-variants page))
                                       :page/panels (page-panels page)}
                                (:gh.manga/title page)
                                (assoc :page/title (:gh.manga/title page))
@@ -146,3 +170,36 @@
                                (page-text (get text-by-uri (:gh.manga/postUri page)))
                                (assoc :page/text (page-text (get text-by-uri (:gh.manga/postUri page))))))
                            pages)}))))
+
+;; ── production variants ──────────────────────────────────────────────────────
+;; A pipeline that re-produces the same episode with a different workflow/LLM
+;; leaves several images per panel rather than one edited in place. The work
+;; carries every alternative alongside the canonical image
+;; (:panel/imageVariants / :page/image-variants, both {workflow -> url}), and
+;; a reader picks one to read the episode through.
+
+(defn select-variant
+  "Work with every panel that HAS an image for `variant` swapped to it.
+
+  Panels the chosen workflow never produced keep their canonical image, so a
+  partially re-produced episode still reads end to end instead of showing
+  holes — which is the normal case: a run usually covers some pages, not all.
+  A nil/blank variant, or one this work has no images for, returns the work
+  unchanged."
+  [work variant]
+  (let [v (when variant (str variant))]
+    (if (or (nil? v) (= "" v))
+      work
+      (update work :manga/pages
+              (fn [pages]
+                (mapv (fn [page]
+                        (let [panels (mapv (fn [p]
+                                             (if-let [u (get (:panel/imageVariants p) v)]
+                                               (assoc p :panel/imageUrl u)
+                                               p))
+                                           (:page/panels page))
+                              images (mapv (fn [img vs] (get vs v img))
+                                           (:page/images page)
+                                           (concat (:page/image-variants page) (repeat {})))]
+                          (assoc page :page/panels panels :page/images images)))
+                      pages))))))
