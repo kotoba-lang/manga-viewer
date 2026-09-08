@@ -19,7 +19,7 @@
   or several (panel-per-image works, e.g. the aozora Ghost Hacker projection).
   Pagination/mode support derives from that distinction — see
   manga-viewer.pagination/supported-modes."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn page-count
   "Page count — :manga/page-count wins when set (index-only works that carry
