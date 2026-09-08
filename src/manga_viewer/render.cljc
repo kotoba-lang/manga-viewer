@@ -4,7 +4,7 @@
   on-click fns, an SSR consumer renders the same hiccup to HTML and adds its
   own enhancer. Plain hiccup only (no reagent-specific forms such as :<>).
   Include manga-viewer.style/css once per page."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [manga-viewer.model :as model]
             [manga-viewer.pagination :as pagination]))
 
