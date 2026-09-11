@@ -53,7 +53,7 @@ fullscreen enhancer. Known consumers: `gftdcojp/app-aozora` (`/manga` index +
 ## Dev
 
 ```bash
-clojure -M:test
+kbb -M:test
 ```
 
 Pure `.cljc`, no interop — runs on cljs and JVM (per the repo-wide runtime
